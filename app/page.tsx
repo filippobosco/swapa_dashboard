@@ -56,6 +56,10 @@ interface Appointment {
   contact?: { id?: string };
 }
 
+type ProvinciaSortKey = "vc" | "td" | "total";
+type SortDirection = "asc" | "desc";
+type ProvinciaSortState = { by: ProvinciaSortKey; dir: SortDirection };
+
 const PIPELINE_STAGES = [
   { id: "52a28729-58ac-4777-9a9d-ac874c1988c1", name: "Videocall",            color: "#9C6FE8" },
   { id: "03108e8e-47b7-46e0-978e-080701784fc2", name: "Follow up",            color: "#3B6FE8" },
@@ -186,6 +190,7 @@ export default function DashboardPage() {
   const [provinciaSearch, setProvinciaSearch] = useState("");
   const [showProvDropdown, setShowProvDropdown] = useState(false);
   const provRef = useRef<HTMLDivElement>(null);
+  const [provinciaSort, setProvinciaSort] = useState<ProvinciaSortState>({ by: "total", dir: "desc" });
   const [stageFilter, setStageFilter] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -385,9 +390,23 @@ export default function DashboardPage() {
     }
     return Array.from(map.entries())
       .map(([prov, v]) => ({ prov, ...v, total: v.vc + v.td + v.call + v.no }))
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => {
+        const diff = a[provinciaSort.by] - b[provinciaSort.by];
+        return provinciaSort.dir === "desc" ? -diff : diff;
+      })
       .slice(0, 20);
-  }, [filtered, appointmentTypeByContact]);
+  }, [filtered, appointmentTypeByContact, provinciaSort]);
+
+  const handleProvinciaSort = useCallback((sortBy: ProvinciaSortKey) => {
+    setProvinciaSort((current) => {
+      if (current.by === sortBy) {
+        return { by: sortBy, dir: current.dir === "desc" ? "asc" : "desc" };
+      }
+      return { by: sortBy, dir: "desc" };
+    });
+  }, []);
+
+  const provinciaSortIndicator = provinciaSort.dir === "desc" ? "↓" : "↑";
 
   // andamento nel tempo
   const timeData = useMemo(() => {
@@ -623,12 +642,44 @@ export default function DashboardPage() {
         {/* Section: Breakdown Provincia */}
         <h2 style={sectionTitle}>Breakdown Provincia × Tipo Appuntamento (top 20)</h2>
         <div style={cardStyle}>
+          <div style={{ padding: "10px 12px", borderBottom: "1px solid #F0F2F5", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>Ordina per</span>
+            {[
+              { key: "total" as ProvinciaSortKey, label: "Totale" },
+              { key: "td" as ProvinciaSortKey, label: "Test Drive" },
+              { key: "vc" as ProvinciaSortKey, label: "Video Call" },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => handleProvinciaSort(opt.key)}
+                style={{
+                  border: "1px solid",
+                  borderColor: provinciaSort.by === opt.key ? "#3B6FE8" : "#E8EAF0",
+                  backgroundColor: provinciaSort.by === opt.key ? "#EEF3FD" : "#fff",
+                  color: provinciaSort.by === opt.key ? "#3B6FE8" : "#6B7280",
+                  borderRadius: 999,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {opt.label} {provinciaSort.by === opt.key ? provinciaSortIndicator : ""}
+              </button>
+            ))}
+          </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ backgroundColor: "#F8F9FB" }}>
-                {["Provincia", "Video Call", "% VC", "Test Drive", "% TD", "Call", "% Call", "Nessuno", "Totale"].map((h) => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
+                <th style={thStyle}>Provincia</th>
+                <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "vc" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "vc" ? "#3B6FE8" : thStyle.color }}>Video Call</th>
+                <th style={thStyle}>% VC</th>
+                <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "td" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "td" ? "#3B6FE8" : thStyle.color }}>Test Drive</th>
+                <th style={thStyle}>% TD</th>
+                <th style={thStyle}>Call</th>
+                <th style={thStyle}>% Call</th>
+                <th style={thStyle}>Nessuno</th>
+                <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "total" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "total" ? "#3B6FE8" : thStyle.color }}>Totale</th>
               </tr>
             </thead>
             <tbody>
