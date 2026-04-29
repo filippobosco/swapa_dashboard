@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { Users, Video, Car, TrendingUp, BarChart2, type LucideIcon } from "lucide-react";
+import { Users, Video, Car, PhoneCall, TrendingUp, BarChart2, type LucideIcon } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,14 @@ interface Deal {
 interface ContactSource {
   id: number;
   name: string;
+}
+
+interface Appointment {
+  id: string;
+  appointment_type?: string;
+  scheduled_at?: string;
+  created_at?: string;
+  contact?: { id?: string };
 }
 
 const PIPELINE_STAGES = [
@@ -88,10 +96,20 @@ function getCrmDateKey(value: string | null | undefined): string | null {
   return match?.[1] ?? null;
 }
 
-function appointmentType(c: Contact): "Video Call" | "Test Drive" | "Nessuno" {
-  const v = getCustomValue(c.custom_values, "website_tipo_app");
-  if (v === "Video Call") return "Video Call";
-  if (v === "Test Drive") return "Test Drive";
+function normalizeAppointmentType(value: string | undefined): "Video Call" | "Test Drive" | "Call" | null {
+  const v = value?.trim().toLowerCase();
+  if (v === "video") return "Video Call";
+  if (v === "in_person") return "Test Drive";
+  if (v === "call") return "Call";
+  return null;
+}
+
+function appointmentTypeForContact(
+  contactId: string,
+  appointmentTypeByContact: Map<string, "Video Call" | "Test Drive" | "Call">
+): "Video Call" | "Test Drive" | "Call" | "Nessuno" {
+  const type = appointmentTypeByContact.get(contactId);
+  if (type) return type;
   return "Nessuno";
 }
 
@@ -171,6 +189,7 @@ export default function DashboardPage() {
   const [stageFilter, setStageFilter] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [sourceMap, setSourceMap] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(false);
   const latestRequestRef = useRef(0);
@@ -184,12 +203,13 @@ export default function DashboardPage() {
       if (dateTo) params.set("to", dateTo);
       const contactsUrl = `/api/contacts${params.toString() ? `?${params.toString()}` : ""}`;
 
-      const [cRes, dRes, sRes] = await Promise.all([
+      const [cRes, dRes, sRes, aRes] = await Promise.all([
         fetch(contactsUrl, { cache: "no-store" }),
         fetch("/api/deals", { cache: "no-store" }),
         fetch("/api/contact-sources", { cache: "no-store" }),
+        fetch("/api/appointments", { cache: "no-store" }),
       ]);
-      const [c, d, s] = await Promise.all([cRes.json(), dRes.json(), sRes.json()]);
+      const [c, d, s, a] = await Promise.all([cRes.json(), dRes.json(), sRes.json(), aRes.json()]);
 
       if (requestId !== latestRequestRef.current) return;
 
@@ -201,6 +221,7 @@ export default function DashboardPage() {
 
       setContacts(filteredContacts);
       setDeals(dealsArr);
+      setAppointments(Array.isArray(a) ? (a as Appointment[]) : []);
 
       if (Array.isArray(s)) {
         const map = new Map<number, string>();
@@ -237,6 +258,34 @@ export default function DashboardPage() {
     return m;
   }, [deals]);
 
+  // contact.id → latest appointment type
+  const appointmentTypeByContact = useMemo(() => {
+    const latestByContact = new Map<string, { timestamp: number; type: "Video Call" | "Test Drive" | "Call" }>();
+
+    for (const appointment of appointments) {
+      const contactId = appointment.contact?.id;
+      if (!contactId) continue;
+
+      const normalizedType = normalizeAppointmentType(appointment.appointment_type);
+      if (!normalizedType) continue;
+
+      const rawDate = appointment.scheduled_at ?? appointment.created_at ?? "";
+      const timestamp = Date.parse(rawDate);
+      const safeTimestamp = Number.isNaN(timestamp) ? 0 : timestamp;
+      const existing = latestByContact.get(contactId);
+
+      if (!existing || safeTimestamp >= existing.timestamp) {
+        latestByContact.set(contactId, { timestamp: safeTimestamp, type: normalizedType });
+      }
+    }
+
+    const typeByContact = new Map<string, "Video Call" | "Test Drive" | "Call">();
+    for (const [contactId, value] of latestByContact.entries()) {
+      typeByContact.set(contactId, value.type);
+    }
+    return typeByContact;
+  }, [appointments]);
+
   // filtered contacts (all filters applied client-side)
   const filtered = useMemo(() => {
     const from = dateFrom || null;
@@ -261,8 +310,9 @@ export default function DashboardPage() {
 
   // KPIs
   const totalLeads = filtered.length;
-  const videoCallCount = filtered.filter((c) => appointmentType(c) === "Video Call").length;
-  const testDriveCount = filtered.filter((c) => appointmentType(c) === "Test Drive").length;
+  const videoCallCount = filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Video Call").length;
+  const testDriveCount = filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Test Drive").length;
+  const callCount = filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Call").length;
   const pct = (n: number) =>
     totalLeads > 0 ? ((n / totalLeads) * 100).toFixed(1) + "%" : "0.0%";
 
@@ -304,51 +354,54 @@ export default function DashboardPage() {
 
   // breakdown sorgente × tipo
   const sourceBreakdown = useMemo(() => {
-    const map = new Map<string, { vc: number; td: number; no: number }>();
+    const map = new Map<string, { vc: number; td: number; call: number; no: number }>();
     for (const c of filtered) {
       const src = getSourceName(c, sourceMap);
-      const t = appointmentType(c);
-      if (!map.has(src)) map.set(src, { vc: 0, td: 0, no: 0 });
+      const t = appointmentTypeForContact(c.id, appointmentTypeByContact);
+      if (!map.has(src)) map.set(src, { vc: 0, td: 0, call: 0, no: 0 });
       const row = map.get(src)!;
       if (t === "Video Call") row.vc++;
       else if (t === "Test Drive") row.td++;
+      else if (t === "Call") row.call++;
       else row.no++;
     }
     return Array.from(map.entries())
-      .map(([src, v]) => ({ src, ...v, total: v.vc + v.td + v.no }))
+      .map(([src, v]) => ({ src, ...v, total: v.vc + v.td + v.call + v.no }))
       .sort((a, b) => b.total - a.total);
-  }, [filtered, sourceMap]);
+  }, [filtered, sourceMap, appointmentTypeByContact]);
 
   // breakdown provincia × tipo
   const provinciaBreakdown = useMemo(() => {
-    const map = new Map<string, { vc: number; td: number; no: number }>();
+    const map = new Map<string, { vc: number; td: number; call: number; no: number }>();
     for (const c of filtered) {
       const prov = getProvinciaNome(c);
-      const t = appointmentType(c);
-      if (!map.has(prov)) map.set(prov, { vc: 0, td: 0, no: 0 });
+      const t = appointmentTypeForContact(c.id, appointmentTypeByContact);
+      if (!map.has(prov)) map.set(prov, { vc: 0, td: 0, call: 0, no: 0 });
       const row = map.get(prov)!;
       if (t === "Video Call") row.vc++;
       else if (t === "Test Drive") row.td++;
+      else if (t === "Call") row.call++;
       else row.no++;
     }
     return Array.from(map.entries())
-      .map(([prov, v]) => ({ prov, ...v, total: v.vc + v.td + v.no }))
+      .map(([prov, v]) => ({ prov, ...v, total: v.vc + v.td + v.call + v.no }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 20);
-  }, [filtered]);
+  }, [filtered, appointmentTypeByContact]);
 
   // andamento nel tempo
   const timeData = useMemo(() => {
-    const map = new Map<string, { total: number; vc: number; td: number }>();
+    const map = new Map<string, { total: number; vc: number; td: number; call: number }>();
     for (const c of filtered) {
       const day = c.created_at?.slice(0, 10) ?? "";
       if (!day) continue;
-      if (!map.has(day)) map.set(day, { total: 0, vc: 0, td: 0 });
+      if (!map.has(day)) map.set(day, { total: 0, vc: 0, td: 0, call: 0 });
       const row = map.get(day)!;
       row.total++;
-      const t = appointmentType(c);
+      const t = appointmentTypeForContact(c.id, appointmentTypeByContact);
       if (t === "Video Call") row.vc++;
       else if (t === "Test Drive") row.td++;
+      else if (t === "Call") row.call++;
     }
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
@@ -357,8 +410,9 @@ export default function DashboardPage() {
         Totale: v.total,
         "Video Call": v.vc,
         "Test Drive": v.td,
+        Call: v.call,
       }));
-  }, [filtered]);
+  }, [filtered, appointmentTypeByContact]);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -489,6 +543,7 @@ export default function DashboardPage() {
           <KpiCard label="Totale Lead"         value={totalLeads}              Icon={Users}      />
           <KpiCard label="Video Call"           value={videoCallCount}          Icon={Video}      accent="#9C6FE8" />
           <KpiCard label="Test Drive"           value={testDriveCount}          Icon={Car}        accent="#4CAF7D" />
+          <KpiCard label="Call"                 value={callCount}               Icon={PhoneCall}  accent="#F59E0B" />
           <KpiCard label="Tasso Video Call"     value={pct(videoCallCount)}     Icon={TrendingUp} accent="#9C6FE8" />
           <KpiCard label="Tasso Test Drive"     value={pct(testDriveCount)}     Icon={TrendingUp} accent="#4CAF7D" />
           <KpiCard label="Tasso Totale"         value={pct(videoCallCount + testDriveCount)} Icon={BarChart2} accent="#3B6FE8" />
@@ -519,7 +574,7 @@ export default function DashboardPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ backgroundColor: "#F8F9FB" }}>
-                {["Sorgente", "Video Call", "% VC", "Test Drive", "% TD", "Nessuno", "Totale", "% Totale"].map((h) => (
+                {["Sorgente", "Video Call", "% VC", "Test Drive", "% TD", "Call", "% Call", "Nessuno", "Totale", "% Totale"].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -545,6 +600,12 @@ export default function DashboardPage() {
                   <td style={{ ...tdStyle, color: "#6B7280" }}>
                     {row.total > 0 ? ((row.td / row.total) * 100).toFixed(1) : "0.0"}%
                   </td>
+                  <td style={tdStyle}>
+                    <span style={callBadge}>{row.call}</span>
+                  </td>
+                  <td style={{ ...tdStyle, color: "#6B7280" }}>
+                    {row.total > 0 ? ((row.call / row.total) * 100).toFixed(1) : "0.0"}%
+                  </td>
                   <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
                   <td style={{ ...tdStyle, color: "#6B7280" }}>
@@ -553,7 +614,7 @@ export default function DashboardPage() {
                 </tr>
               ))}
               {sourceBreakdown.length === 0 && (
-                <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
+                <tr><td colSpan={10} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
               )}
             </tbody>
           </table>
@@ -565,7 +626,7 @@ export default function DashboardPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ backgroundColor: "#F8F9FB" }}>
-                {["Provincia", "Video Call", "% VC", "Test Drive", "% TD", "Nessuno", "Totale"].map((h) => (
+                {["Provincia", "Video Call", "% VC", "Test Drive", "% TD", "Call", "% Call", "Nessuno", "Totale"].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -594,13 +655,17 @@ export default function DashboardPage() {
                     <td style={{ ...tdStyle, color: "#6B7280" }}>
                       {row.total > 0 ? ((row.td / row.total) * 100).toFixed(1) + "%" : "—"}
                     </td>
+                    <td style={tdStyle}><span style={callBadge}>{row.call}</span></td>
+                    <td style={{ ...tdStyle, color: "#6B7280" }}>
+                      {row.total > 0 ? ((row.call / row.total) * 100).toFixed(1) + "%" : "—"}
+                    </td>
                     <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
                   </tr>
                 );
               })}
               {provinciaBreakdown.length === 0 && (
-                <tr><td colSpan={7} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
+                <tr><td colSpan={9} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
               )}
             </tbody>
           </table>
@@ -623,6 +688,7 @@ export default function DashboardPage() {
                 <Line type="monotone" dataKey="Totale"     stroke="#3B6FE8" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="Video Call" stroke="#9C6FE8" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="Test Drive" stroke="#4CAF7D" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="Call"       stroke="#F59E0B" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -696,6 +762,15 @@ const vcBadge: React.CSSProperties = {
 const tdBadge: React.CSSProperties = {
   backgroundColor: "#D1FAE5",
   color: "#065F46",
+  borderRadius: 4,
+  padding: "2px 8px",
+  fontSize: 12,
+  fontWeight: 500,
+};
+
+const callBadge: React.CSSProperties = {
+  backgroundColor: "#FEF3C7",
+  color: "#92400E",
   borderRadius: 4,
   padding: "2px 8px",
   fontSize: 12,
