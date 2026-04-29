@@ -1,65 +1,686 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import { Users, Video, Car, TrendingUp, BarChart2, type LucideIcon } from "lucide-react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CustomValue {
+  custom_field: { key: string };
+  value_text: string | null;
+}
+
+interface Contact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  city: string;
+  created_at: string;
+  source?: number;
+  assigned_to?: { id: number; name: string };
+  custom_values?: CustomValue[];
+}
+
+interface Deal {
+  id: string;
+  contact?: { id: string };
+  current_stage?: string;
+  current_stage_name?: string;
+  pipeline_name?: string;
+  created_at: string;
+  assigned_to?: { id: number; name: string };
+}
+
+interface ContactSource {
+  id: number;
+  name: string;
+}
+
+const PIPELINE_STAGES = [
+  { id: "52a28729-58ac-4777-9a9d-ac874c1988c1", name: "Videocall",            color: "#9C6FE8" },
+  { id: "03108e8e-47b7-46e0-978e-080701784fc2", name: "Follow up",            color: "#3B6FE8" },
+  { id: "80473b43-709e-4039-ad73-0d3fcd4d74e6", name: "Hot Lead",             color: "#3B6FE8" },
+  { id: "110c5405-fac0-4f68-9216-3be40e6e8a48", name: "Long Term",            color: "#3B6FE8" },
+  { id: "2503dba8-a62e-4c3a-bc4a-07fe7a19026b", name: "Test Drive LOMBARDIA", color: "#4CAF7D" },
+  { id: "824dd0b3-cfa1-4ae7-ad9f-2670bab92731", name: "Test Drive LAZIO",     color: "#4CAF7D" },
+  { id: "5c32feb9-67bf-492d-8ad2-dfd2317aee81", name: "Test Drive PIEMONTE",  color: "#4CAF7D" },
+  { id: "8d80016f-9142-41ea-96ef-e289508cd1f1", name: "Test Drive CAMPANIA",  color: "#4CAF7D" },
+  { id: "26c0d748-63cb-415d-93b0-a3499821e49c", name: "Test Drive TOSCANA",   color: "#4CAF7D" },
+  { id: "a1c13da3-5ffd-4701-8bcb-c2256b1578e0", name: "Test Drive ROMAGNA",   color: "#4CAF7D" },
+  { id: "133d8a6a-ea84-4393-8fc4-fc7b296333d8", name: "Order",                color: "#F59E0B" },
+  { id: "fe17a3ba-0afe-4734-a111-1d49a16ea318", name: "Trade In",             color: "#F97316" },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getCustomValue(custom_values: CustomValue[] | undefined, key: string): string | null {
+  const found = custom_values?.find((cv) => cv.custom_field?.key === key);
+  return found?.value_text ?? null;
+}
+
+function toTitleCase(s: string): string {
+  return s.trim().toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function defaultDateRange() {
+  const end = new Date();
+  return {
+    from: "2025-03-20",
+    to: end.toISOString().slice(0, 10),
+  };
+}
+
+function appointmentType(c: Contact): "Video Call" | "Test Drive" | "Nessuno" {
+  const v = getCustomValue(c.custom_values, "website_tipo_app");
+  if (v === "Video Call") return "Video Call";
+  if (v === "Test Drive") return "Test Drive";
+  return "Nessuno";
+}
+
+function getSourceName(c: Contact, sourceMap: Map<number, string>): string {
+  if (c.source != null) return sourceMap.get(c.source) ?? `Fonte ${c.source}`;
+  return "Sconosciuta";
+}
+
+function getProvinciaNome(c: Contact): string {
+  const raw = getCustomValue(c.custom_values, "in_che_provincia_risiedi_") || c.city || "";
+  return raw ? toTitleCase(raw) : "—";
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+function KpiCard({
+  label,
+  value,
+  accent,
+  Icon,
+}: {
+  label: string;
+  value: string | number;
+  accent?: string;
+  Icon?: LucideIcon;
+}) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div style={{
+      backgroundColor: "#fff",
+      border: "1px solid #E8EAF0",
+      borderRadius: 8,
+      padding: 20,
+      position: "relative",
+    }}>
+      {Icon && (
+        <Icon
+          size={16}
+          style={{ position: "absolute", top: 16, right: 16, color: accent ?? "#6B7280", opacity: 0.6 }}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      )}
+      <div style={{ color: "#6B7280", fontSize: 12, marginBottom: 8 }}>{label}</div>
+      <div style={{ color: accent ?? "#1A1A2E", fontSize: 28, fontWeight: 600, lineHeight: 1 }}>
+        {value}
+      </div>
     </div>
   );
 }
+
+// ─── Filter Label ─────────────────────────────────────────────────────────────
+
+function FilterLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 10,
+      color: "#6B7280",
+      textTransform: "uppercase",
+      letterSpacing: "0.06em",
+      fontWeight: 500,
+      marginBottom: 5,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const defaults = defaultDateRange();
+  const [dateFrom, setDateFrom] = useState(defaults.from);
+  const [dateTo, setDateTo] = useState(defaults.to);
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [provinciaFilter, setProvinciaFilter] = useState("");
+  const [provinciaSearch, setProvinciaSearch] = useState("");
+  const [showProvDropdown, setShowProvDropdown] = useState(false);
+  const provRef = useRef<HTMLDivElement>(null);
+  const [stageFilter, setStageFilter] = useState("");
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [sourceMap, setSourceMap] = useState<Map<number, string>>(new Map());
+  const [loading, setLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cRes, dRes, sRes] = await Promise.all([
+        fetch("/api/contacts"),
+        fetch("/api/deals"),
+        fetch("/api/contact-sources"),
+      ]);
+      const [c, d, s] = await Promise.all([cRes.json(), dRes.json(), sRes.json()]);
+
+      const dealsArr: Deal[] = Array.isArray(d) ? d : [];
+      const validContactIds = new Set(dealsArr.map((deal) => deal.contact?.id).filter(Boolean));
+      const filteredContacts = Array.isArray(c)
+        ? (c as Contact[]).filter((contact) => validContactIds.has(contact.id))
+        : [];
+
+      setContacts(filteredContacts);
+      setDeals(dealsArr);
+
+      if (Array.isArray(s)) {
+        const map = new Map<number, string>();
+        (s as ContactSource[]).forEach((src) => map.set(src.id, src.name));
+        setSourceMap(map);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (provRef.current && !provRef.current.contains(e.target as Node)) {
+        setShowProvDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // contact.id → deal (for stage filter)
+  const dealByContact = useMemo(() => {
+    const m = new Map<string, Deal>();
+    for (const d of deals) {
+      if (d.contact?.id) m.set(d.contact.id, d);
+    }
+    return m;
+  }, [deals]);
+
+  // filtered contacts (all filters applied client-side)
+  const filtered = useMemo(() => {
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
+
+    return contacts.filter((c) => {
+      if (from || to) {
+        const created = new Date(c.created_at);
+        if (from && created < from) return false;
+        if (to && created > to) return false;
+      }
+      if (sourceFilter && getSourceName(c, sourceMap) !== sourceFilter) return false;
+      if (provinciaFilter && getProvinciaNome(c) !== provinciaFilter) return false;
+      if (stageFilter) {
+        const deal = dealByContact.get(c.id);
+        if ((deal?.current_stage_name ?? "") !== stageFilter) return false;
+      }
+      return true;
+    });
+  }, [contacts, dateFrom, dateTo, sourceFilter, provinciaFilter, stageFilter, dealByContact, sourceMap]);
+
+  // KPIs
+  const totalLeads = filtered.length;
+  const videoCallCount = filtered.filter((c) => appointmentType(c) === "Video Call").length;
+  const testDriveCount = filtered.filter((c) => appointmentType(c) === "Test Drive").length;
+  const pct = (n: number) =>
+    totalLeads > 0 ? ((n / totalLeads) * 100).toFixed(1) + "%" : "0.0%";
+
+  // pipeline stage distribution — uses raw `deals` (all SWAPA deals, date filter NOT applied)
+  const pipelineBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    deals.forEach((d) => {
+      if (d.current_stage) counts.set(d.current_stage, (counts.get(d.current_stage) ?? 0) + 1);
+    });
+    return PIPELINE_STAGES.map(({ id, name, color }) => ({ name, color, count: counts.get(id) ?? 0 }));
+  }, [deals]);
+
+  // dropdown options — derived from all loaded contacts (not filtered)
+  const allSources = useMemo(() => {
+    const s = new Set<string>();
+    contacts.forEach((c) => s.add(getSourceName(c, sourceMap)));
+    return Array.from(s).sort();
+  }, [contacts, sourceMap]);
+
+  const allProvinces = useMemo(() => {
+    const s = new Set<string>();
+    contacts.forEach((c) => {
+      const p = getProvinciaNome(c);
+      if (p !== "—") s.add(p);
+    });
+    return Array.from(s).sort();
+  }, [contacts]);
+
+  const allStages = useMemo(() => {
+    const s = new Set<string>();
+    deals.forEach((d) => {
+      const name = d.current_stage_name ?? "";
+      if (name) s.add(name);
+    });
+    return Array.from(s)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ id: name, name }));
+  }, [deals]);
+
+  // breakdown sorgente × tipo
+  const sourceBreakdown = useMemo(() => {
+    const map = new Map<string, { vc: number; td: number; no: number }>();
+    for (const c of filtered) {
+      const src = getSourceName(c, sourceMap);
+      const t = appointmentType(c);
+      if (!map.has(src)) map.set(src, { vc: 0, td: 0, no: 0 });
+      const row = map.get(src)!;
+      if (t === "Video Call") row.vc++;
+      else if (t === "Test Drive") row.td++;
+      else row.no++;
+    }
+    return Array.from(map.entries())
+      .map(([src, v]) => ({ src, ...v, total: v.vc + v.td + v.no }))
+      .sort((a, b) => b.total - a.total);
+  }, [filtered, sourceMap]);
+
+  // breakdown provincia × tipo
+  const provinciaBreakdown = useMemo(() => {
+    const map = new Map<string, { vc: number; td: number; no: number }>();
+    for (const c of filtered) {
+      const prov = getProvinciaNome(c);
+      const t = appointmentType(c);
+      if (!map.has(prov)) map.set(prov, { vc: 0, td: 0, no: 0 });
+      const row = map.get(prov)!;
+      if (t === "Video Call") row.vc++;
+      else if (t === "Test Drive") row.td++;
+      else row.no++;
+    }
+    return Array.from(map.entries())
+      .map(([prov, v]) => ({ prov, ...v, total: v.vc + v.td + v.no }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 20);
+  }, [filtered]);
+
+  // andamento nel tempo
+  const timeData = useMemo(() => {
+    const map = new Map<string, { total: number; vc: number; td: number }>();
+    for (const c of filtered) {
+      const day = c.created_at?.slice(0, 10) ?? "";
+      if (!day) continue;
+      if (!map.has(day)) map.set(day, { total: 0, vc: 0, td: 0 });
+      const row = map.get(day)!;
+      row.total++;
+      const t = appointmentType(c);
+      if (t === "Video Call") row.vc++;
+      else if (t === "Test Drive") row.td++;
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => ({
+        date: date.slice(5),
+        Totale: v.total,
+        "Video Call": v.vc,
+        "Test Drive": v.td,
+      }));
+  }, [filtered]);
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ minHeight: "100vh", backgroundColor: "#F8F9FB", color: "#1A1A2E" }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        backgroundColor: "#fff",
+        borderBottom: "1px solid #E8EAF0",
+        padding: "16px 32px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: "#1A1A2E" }}>Swapa</span>
+        <span style={{ color: "#6B7280", fontSize: 13 }}>Filante Motors srl</span>
+      </div>
+
+      {/* ── Filter bar (sticky) ── */}
+      <div style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 20,
+        backgroundColor: "#fff",
+        borderBottom: "1px solid #E8EAF0",
+        padding: "10px 32px",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 12,
+        alignItems: "flex-end",
+      }}>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <FilterLabel>Data inizio</FilterLabel>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={fieldStyle} />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <FilterLabel>Data fine</FilterLabel>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={fieldStyle} />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <FilterLabel>Sorgente</FilterLabel>
+          <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={fieldStyle}>
+            <option value="">Tutte</option>
+            {allSources.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        {/* Provincia combobox */}
+        <div ref={provRef} style={{ display: "flex", flexDirection: "column", position: "relative" }}>
+          <FilterLabel>Provincia</FilterLabel>
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="Cerca…"
+              value={provinciaSearch}
+              onChange={(e) => { setProvinciaSearch(e.target.value); setProvinciaFilter(""); setShowProvDropdown(true); }}
+              onFocus={() => setShowProvDropdown(true)}
+              style={{ ...fieldStyle, paddingRight: provinciaSearch ? 26 : 10, minWidth: 140 }}
+            />
+            {provinciaSearch && (
+              <button
+                onClick={() => { setProvinciaSearch(""); setProvinciaFilter(""); setShowProvDropdown(false); }}
+                style={{ position: "absolute", right: 7, background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 13, padding: 0, lineHeight: 1 }}
+              >✕</button>
+            )}
+          </div>
+          {showProvDropdown && (
+            <div style={{
+              position: "absolute", top: "100%", left: 0, right: 0, marginTop: 2,
+              backgroundColor: "#fff", border: "1px solid #E8EAF0", borderRadius: 6,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)", zIndex: 100, maxHeight: 200, overflowY: "auto",
+            }}>
+              {allProvinces
+                .filter((p) => provinciaSearch === "" || p.toLowerCase().includes(provinciaSearch.toLowerCase()))
+                .map((p) => (
+                  <div
+                    key={p}
+                    onMouseDown={() => { setProvinciaFilter(p); setProvinciaSearch(p); setShowProvDropdown(false); }}
+                    style={{
+                      padding: "7px 10px", fontSize: 13, cursor: "pointer",
+                      backgroundColor: p === provinciaFilter ? "#EEF3FD" : "transparent",
+                      color: p === provinciaFilter ? "#3B6FE8" : "#1A1A2E",
+                      fontWeight: p === provinciaFilter ? 600 : 400,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = p === provinciaFilter ? "#EEF3FD" : "#F8F9FB")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = p === provinciaFilter ? "#EEF3FD" : "transparent")}
+                  >{p}</div>
+                ))}
+              {allProvinces.filter((p) => provinciaSearch === "" || p.toLowerCase().includes(provinciaSearch.toLowerCase())).length === 0 && (
+                <div style={{ padding: "7px 10px", fontSize: 13, color: "#6B7280" }}>Nessuna trovata</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <FilterLabel>Stage</FilterLabel>
+          <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={fieldStyle}>
+            <option value="">Tutti</option>
+            {allStages.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+          </select>
+        </div>
+
+        <button
+          onClick={fetchData}
+          disabled={loading}
+          style={{
+            backgroundColor: "#3B6FE8", color: "#fff", border: "none",
+            borderRadius: 6, padding: "0 16px", fontWeight: 500,
+            fontSize: 13, cursor: loading ? "not-allowed" : "pointer",
+            opacity: loading ? 0.7 : 1, height: 36, marginTop: "auto",
+          }}
+        >
+          {loading ? "Caricamento…" : "Aggiorna"}
+        </button>
+      </div>
+
+      {/* ── Content ── */}
+      <div style={{ padding: "0 32px 48px" }}>
+
+        {/* Section: Riepilogo */}
+        <h2 style={sectionTitle}>Riepilogo</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: 12 }}>
+          <KpiCard label="Totale Lead"         value={totalLeads}              Icon={Users}      />
+          <KpiCard label="Video Call"           value={videoCallCount}          Icon={Video}      accent="#9C6FE8" />
+          <KpiCard label="Test Drive"           value={testDriveCount}          Icon={Car}        accent="#4CAF7D" />
+          <KpiCard label="Tasso Video Call"     value={pct(videoCallCount)}     Icon={TrendingUp} accent="#9C6FE8" />
+          <KpiCard label="Tasso Test Drive"     value={pct(testDriveCount)}     Icon={TrendingUp} accent="#4CAF7D" />
+          <KpiCard label="Tasso Totale"         value={pct(videoCallCount + testDriveCount)} Icon={BarChart2} accent="#3B6FE8" />
+        </div>
+
+        {/* Section: Pipeline */}
+        <h2 style={sectionTitle}>
+          Distribuzione Pipeline Swapa
+          <span style={{ fontSize: 11, color: "#9CA3AF", fontStyle: "italic", fontWeight: 400, marginLeft: 8 }}>
+            — dati totali, indipendenti dal filtro date
+          </span>
+        </h2>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          {pipelineBreakdown.map(({ name, color, count }) => (
+            <div key={name} style={{
+              backgroundColor: "#fff", border: "1px solid #E8EAF0",
+              borderRadius: 8, padding: 16, minWidth: 110, flex: "1 1 110px",
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 600, color, lineHeight: 1.1 }}>{count}</div>
+              <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{name}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Section: Breakdown Sorgente */}
+        <h2 style={sectionTitle}>Breakdown Sorgente × Tipo Appuntamento</h2>
+        <div style={cardStyle}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ backgroundColor: "#F8F9FB" }}>
+                {["Sorgente", "Video Call", "% VC", "Test Drive", "% TD", "Nessuno", "Totale", "% Totale"].map((h) => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sourceBreakdown.map((row, i) => (
+                <tr
+                  key={row.src}
+                  style={{ borderBottom: i === sourceBreakdown.length - 1 ? "none" : "1px solid #F0F2F5" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8F9FB")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  <td style={tdStyle}>{row.src}</td>
+                  <td style={tdStyle}>
+                    <span style={vcBadge}>{row.vc}</span>
+                  </td>
+                  <td style={{ ...tdStyle, color: "#6B7280" }}>
+                    {row.total > 0 ? ((row.vc / row.total) * 100).toFixed(1) : "0.0"}%
+                  </td>
+                  <td style={tdStyle}>
+                    <span style={tdBadge}>{row.td}</span>
+                  </td>
+                  <td style={{ ...tdStyle, color: "#6B7280" }}>
+                    {row.total > 0 ? ((row.td / row.total) * 100).toFixed(1) : "0.0"}%
+                  </td>
+                  <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
+                  <td style={{ ...tdStyle, color: "#6B7280" }}>
+                    {totalLeads > 0 ? ((row.total / totalLeads) * 100).toFixed(1) : "0.0"}%
+                  </td>
+                </tr>
+              ))}
+              {sourceBreakdown.length === 0 && (
+                <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Section: Breakdown Provincia */}
+        <h2 style={sectionTitle}>Breakdown Provincia × Tipo Appuntamento (top 20)</h2>
+        <div style={cardStyle}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ backgroundColor: "#F8F9FB" }}>
+                {["Provincia", "Video Call", "% VC", "Test Drive", "% TD", "Nessuno", "Totale"].map((h) => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {provinciaBreakdown.map((row, i) => {
+                const isHighlighted = provinciaFilter !== "" && row.prov === provinciaFilter;
+                return (
+                  <tr
+                    key={row.prov}
+                    style={{
+                      borderBottom: i === provinciaBreakdown.length - 1 ? "none" : "1px solid #F0F2F5",
+                      backgroundColor: isHighlighted ? "#EEF3FD" : "transparent",
+                      outline: isHighlighted ? "2px solid #3B6FE8" : undefined,
+                      outlineOffset: isHighlighted ? "-1px" : undefined,
+                    }}
+                    onMouseEnter={(e) => { if (!isHighlighted) e.currentTarget.style.backgroundColor = "#F8F9FB"; }}
+                    onMouseLeave={(e) => { if (!isHighlighted) e.currentTarget.style.backgroundColor = "transparent"; }}
+                  >
+                    <td style={{ ...tdStyle, fontWeight: isHighlighted ? 600 : undefined, color: isHighlighted ? "#3B6FE8" : undefined }}>{row.prov}</td>
+                    <td style={tdStyle}><span style={vcBadge}>{row.vc}</span></td>
+                    <td style={{ ...tdStyle, color: "#6B7280" }}>
+                      {row.total > 0 ? ((row.vc / row.total) * 100).toFixed(1) + "%" : "—"}
+                    </td>
+                    <td style={tdStyle}><span style={tdBadge}>{row.td}</span></td>
+                    <td style={{ ...tdStyle, color: "#6B7280" }}>
+                      {row.total > 0 ? ((row.td / row.total) * 100).toFixed(1) + "%" : "—"}
+                    </td>
+                    <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
+                  </tr>
+                );
+              })}
+              {provinciaBreakdown.length === 0 && (
+                <tr><td colSpan={7} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Section: Andamento */}
+        <h2 style={sectionTitle}>Andamento Lead nel Tempo</h2>
+        <div style={{ ...cardStyle, padding: 20 }}>
+          {timeData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={timeData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F0F2F5" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#fff", border: "1px solid #E8EAF0", borderRadius: 6, fontSize: 12, boxShadow: "none" }}
+                  labelStyle={{ color: "#6B7280", marginBottom: 4 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12, color: "#6B7280", paddingTop: 8 }} />
+                <Line type="monotone" dataKey="Totale"     stroke="#3B6FE8" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="Video Call" stroke="#9C6FE8" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="Test Drive" stroke="#4CAF7D" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ textAlign: "center", color: "#9CA3AF", padding: 48, fontSize: 13 }}>
+              Nessun dato da visualizzare
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared Styles ────────────────────────────────────────────────────────────
+
+const sectionTitle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: "#1A1A2E",
+  marginTop: 32,
+  marginBottom: 12,
+};
+
+const cardStyle: React.CSSProperties = {
+  backgroundColor: "#fff",
+  border: "1px solid #E8EAF0",
+  borderRadius: 8,
+  overflow: "hidden",
+};
+
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "10px 16px",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#6B7280",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  whiteSpace: "nowrap",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "12px 16px",
+  fontSize: 13,
+  color: "#1A1A2E",
+  whiteSpace: "nowrap",
+};
+
+const fieldStyle: React.CSSProperties = {
+  height: 36,
+  border: "1px solid #E8EAF0",
+  borderRadius: 6,
+  padding: "0 10px",
+  fontSize: 13,
+  color: "#1A1A2E",
+  backgroundColor: "#fff",
+  minWidth: 130,
+  outline: "none",
+};
+
+const vcBadge: React.CSSProperties = {
+  backgroundColor: "#EDE9FE",
+  color: "#7C3AED",
+  borderRadius: 4,
+  padding: "2px 8px",
+  fontSize: 12,
+  fontWeight: 500,
+};
+
+const tdBadge: React.CSSProperties = {
+  backgroundColor: "#D1FAE5",
+  color: "#065F46",
+  borderRadius: 4,
+  padding: "2px 8px",
+  fontSize: 12,
+  fontWeight: 500,
+};
