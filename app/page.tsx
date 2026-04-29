@@ -82,6 +82,16 @@ function defaultDateRange() {
   };
 }
 
+function parseCrmDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+
+  // Relatia sometimes returns "YYYY-MM-DD HH:mm:ss" which is not reliably parsed.
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
 function appointmentType(c: Contact): "Video Call" | "Test Drive" | "Nessuno" {
   const v = getCustomValue(c.custom_values, "website_tipo_app");
   if (v === "Video Call") return "Video Call";
@@ -171,8 +181,13 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams();
+      if (dateFrom) params.set("from", dateFrom);
+      if (dateTo) params.set("to", dateTo);
+      const contactsUrl = `/api/contacts${params.toString() ? `?${params.toString()}` : ""}`;
+
       const [cRes, dRes, sRes] = await Promise.all([
-        fetch("/api/contacts"),
+        fetch(contactsUrl),
         fetch("/api/deals"),
         fetch("/api/contact-sources"),
       ]);
@@ -195,12 +210,11 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dateFrom, dateTo]);
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -228,7 +242,8 @@ export default function DashboardPage() {
 
     return contacts.filter((c) => {
       if (from || to) {
-        const created = new Date(c.created_at);
+        const created = parseCrmDate(c.created_at);
+        if (!created) return false;
         if (from && created < from) return false;
         if (to && created > to) return false;
       }
