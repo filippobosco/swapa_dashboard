@@ -77,19 +77,15 @@ function toTitleCase(s: string): string {
 function defaultDateRange() {
   const end = new Date();
   return {
-    from: "2025-03-20",
+    from: "2026-03-20",
     to: end.toISOString().slice(0, 10),
   };
 }
 
-function parseCrmDate(value: string | null | undefined): Date | null {
+function getCrmDateKey(value: string | null | undefined): string | null {
   if (!value) return null;
-
-  // Relatia sometimes returns "YYYY-MM-DD HH:mm:ss" which is not reliably parsed.
-  const normalized = value.includes("T") ? value : value.replace(" ", "T");
-  const parsed = new Date(normalized);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] ?? null;
 }
 
 function appointmentType(c: Contact): "Video Call" | "Test Drive" | "Nessuno" {
@@ -243,12 +239,12 @@ export default function DashboardPage() {
 
   // filtered contacts (all filters applied client-side)
   const filtered = useMemo(() => {
-    const from = dateFrom ? new Date(dateFrom) : null;
-    const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
+    const from = dateFrom || null;
+    const to = dateTo || null;
 
     return contacts.filter((c) => {
       if (from || to) {
-        const created = parseCrmDate(c.created_at);
+        const created = getCrmDateKey(c.created_at);
         if (!created) return false;
         if (from && created < from) return false;
         if (to && created > to) return false;
