@@ -177,8 +177,10 @@ export default function DashboardPage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [sourceMap, setSourceMap] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(false);
+  const latestRequestRef = useRef(0);
 
   const fetchData = useCallback(async () => {
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -187,11 +189,13 @@ export default function DashboardPage() {
       const contactsUrl = `/api/contacts${params.toString() ? `?${params.toString()}` : ""}`;
 
       const [cRes, dRes, sRes] = await Promise.all([
-        fetch(contactsUrl),
-        fetch("/api/deals"),
-        fetch("/api/contact-sources"),
+        fetch(contactsUrl, { cache: "no-store" }),
+        fetch("/api/deals", { cache: "no-store" }),
+        fetch("/api/contact-sources", { cache: "no-store" }),
       ]);
       const [c, d, s] = await Promise.all([cRes.json(), dRes.json(), sRes.json()]);
+
+      if (requestId !== latestRequestRef.current) return;
 
       const dealsArr: Deal[] = Array.isArray(d) ? d : [];
       const validContactIds = new Set(dealsArr.map((deal) => deal.contact?.id).filter(Boolean));
@@ -208,7 +212,9 @@ export default function DashboardPage() {
         setSourceMap(map);
       }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestRef.current) {
+        setLoading(false);
+      }
     }
   }, [dateFrom, dateTo]);
 
