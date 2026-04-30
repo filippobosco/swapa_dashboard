@@ -127,6 +127,114 @@ function getProvinciaNome(c: Contact): string {
   return raw ? toTitleCase(raw) : "—";
 }
 
+function fmtPct(n: number, total: number): string {
+  return total > 0 ? ((n / total) * 100).toFixed(1) + "%" : "—";
+}
+
+// ─── LeadDrawer ───────────────────────────────────────────────────────────────
+
+function LeadDrawer({
+  open,
+  title,
+  leads,
+  sourceMap,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  leads: Contact[];
+  sourceMap: Map<number, string>;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.35)", zIndex: 200 }}
+      />
+      <div style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 480,
+        backgroundColor: "#fff",
+        borderLeft: "1px solid #E8EAF0",
+        zIndex: 201,
+        display: "flex",
+        flexDirection: "column",
+        animation: "slideInRight 200ms ease-out",
+        fontFamily: "Inter, sans-serif",
+      }}>
+        <div style={{
+          padding: "16px 20px",
+          borderBottom: "1px solid #E8EAF0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+        }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: "#1A1A2E" }}>
+            {title}
+          </span>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}
+          >
+            ✕
+          </button>
+        </div>
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          {leads.length === 0 && (
+            <div style={{ padding: 32, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>Nessun lead</div>
+          )}
+          {leads.map((lead, i) => {
+            const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "—";
+            const prov = getProvinciaNome(lead);
+            const src = getSourceName(lead, sourceMap);
+            const date = lead.created_at?.slice(0, 10) ?? "—";
+            return (
+              <a
+                key={lead.id}
+                href={`https://filante.relatiacrm.com/contacts/${lead.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "block",
+                  padding: "12px 20px",
+                  borderBottom: i === leads.length - 1 ? "none" : "1px solid #F0F2F5",
+                  textDecoration: "none",
+                  color: "inherit",
+                  backgroundColor: "transparent",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8F9FB")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1A2E", marginBottom: 3 }}>{fullName}</div>
+                <div style={{ fontSize: 12, color: "#6B7280", display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span>{lead.phone || "—"}</span>
+                  <span>{prov}</span>
+                  <span>{src}</span>
+                  <span>{date}</span>
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({
@@ -134,20 +242,28 @@ function KpiCard({
   value,
   accent,
   Icon,
+  onClick,
 }: {
   label: string;
   value: string | number;
   accent?: string;
   Icon?: LucideIcon;
+  onClick?: () => void;
 }) {
   return (
-    <div style={{
-      backgroundColor: "#fff",
-      border: "1px solid #E8EAF0",
-      borderRadius: 8,
-      padding: 20,
-      position: "relative",
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        backgroundColor: "#fff",
+        border: "1px solid #E8EAF0",
+        borderRadius: 8,
+        padding: 20,
+        position: "relative",
+        cursor: onClick ? "pointer" : undefined,
+      }}
+      onMouseEnter={(e) => { if (onClick) (e.currentTarget as HTMLDivElement).style.backgroundColor = "#F8F9FB"; }}
+      onMouseLeave={(e) => { if (onClick) (e.currentTarget as HTMLDivElement).style.backgroundColor = "#fff"; }}
+    >
       {Icon && (
         <Icon
           size={16}
@@ -155,7 +271,14 @@ function KpiCard({
         />
       )}
       <div style={{ color: "#6B7280", fontSize: 12, marginBottom: 8 }}>{label}</div>
-      <div style={{ color: accent ?? "#1A1A2E", fontSize: 28, fontWeight: 600, lineHeight: 1 }}>
+      <div style={{
+        color: accent ?? "#1A1A2E",
+        fontSize: 28,
+        fontWeight: 600,
+        lineHeight: 1,
+        textDecoration: onClick ? "underline dotted" : "none",
+        textDecorationColor: accent ?? "#1A1A2E",
+      }}>
         {value}
       </div>
     </div>
@@ -179,6 +302,27 @@ function FilterLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── ClickableBadge ───────────────────────────────────────────────────────────
+
+function ClickableBadge({
+  value,
+  badgeStyle,
+  onClick,
+}: {
+  value: number;
+  badgeStyle: React.CSSProperties;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "inline-flex" }}
+    >
+      <span style={{ ...badgeStyle, textDecoration: "underline dotted" }}>{value}</span>
+    </button>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -198,6 +342,19 @@ export default function DashboardPage() {
   const [sourceMap, setSourceMap] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(false);
   const latestRequestRef = useRef(0);
+
+  // Drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTitle, setDrawerTitle] = useState("");
+  const [drawerLeads, setDrawerLeads] = useState<Contact[]>([]);
+
+  const openDrawer = useCallback((title: string, leads: Contact[]) => {
+    setDrawerTitle(title);
+    setDrawerLeads(leads);
+    setDrawerOpen(true);
+  }, []);
+
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   const fetchData = useCallback(async () => {
     const requestId = ++latestRequestRef.current;
@@ -315,8 +472,16 @@ export default function DashboardPage() {
 
   // KPIs
   const totalLeads = filtered.length;
-  const videoCallCount = filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Video Call").length;
-  const testDriveCount = filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Test Drive").length;
+  const videoCallLeads = useMemo(
+    () => filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Video Call"),
+    [filtered, appointmentTypeByContact]
+  );
+  const testDriveLeads = useMemo(
+    () => filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Test Drive"),
+    [filtered, appointmentTypeByContact]
+  );
+  const videoCallCount = videoCallLeads.length;
+  const testDriveCount = testDriveLeads.length;
   const callCount = filtered.filter((c) => appointmentTypeForContact(c.id, appointmentTypeByContact) === "Call").length;
   const pct = (n: number) =>
     totalLeads > 0 ? ((n / totalLeads) * 100).toFixed(1) + "%" : "0.0%";
@@ -436,321 +601,389 @@ export default function DashboardPage() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#F8F9FB", color: "#1A1A2E" }}>
+    <>
+      <LeadDrawer
+        open={drawerOpen}
+        title={drawerTitle}
+        leads={drawerLeads}
+        sourceMap={sourceMap}
+        onClose={closeDrawer}
+      />
 
-      {/* ── Header ── */}
-      <div style={{
-        backgroundColor: "#fff",
-        borderBottom: "1px solid #E8EAF0",
-        padding: "16px 32px",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-      }}>
-        <span style={{ fontSize: 18, fontWeight: 700, color: "#1A1A2E" }}>Swapa</span>
-        <span style={{ color: "#6B7280", fontSize: 13 }}>Filante Motors srl</span>
-      </div>
+      <div style={{ minHeight: "100vh", backgroundColor: "#F8F9FB", color: "#1A1A2E" }}>
 
-      {/* ── Filter bar (sticky) ── */}
-      <div style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 20,
-        backgroundColor: "#fff",
-        borderBottom: "1px solid #E8EAF0",
-        padding: "10px 32px",
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 12,
-        alignItems: "flex-end",
-      }}>
-
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <FilterLabel>Data inizio</FilterLabel>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={fieldStyle} />
+        {/* ── Header ── */}
+        <div style={{
+          backgroundColor: "#fff",
+          borderBottom: "1px solid #E8EAF0",
+          padding: "16px 32px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#1A1A2E" }}>Swapa</span>
+          <span style={{ color: "#6B7280", fontSize: 13 }}>Filante Motors srl</span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <FilterLabel>Data fine</FilterLabel>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={fieldStyle} />
-        </div>
+        {/* ── Filter bar (sticky) ── */}
+        <div style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          backgroundColor: "#fff",
+          borderBottom: "1px solid #E8EAF0",
+          padding: "10px 32px",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          alignItems: "flex-end",
+        }}>
 
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <FilterLabel>Sorgente</FilterLabel>
-          <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={fieldStyle}>
-            <option value="">Tutte</option>
-            {allSources.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <FilterLabel>Data inizio</FilterLabel>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={fieldStyle} />
+          </div>
 
-        {/* Provincia combobox */}
-        <div ref={provRef} style={{ display: "flex", flexDirection: "column", position: "relative" }}>
-          <FilterLabel>Provincia</FilterLabel>
-          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-            <input
-              type="text"
-              placeholder="Cerca…"
-              value={provinciaSearch}
-              onChange={(e) => { setProvinciaSearch(e.target.value); setProvinciaFilter(""); setShowProvDropdown(true); }}
-              onFocus={() => setShowProvDropdown(true)}
-              style={{ ...fieldStyle, paddingRight: provinciaSearch ? 26 : 10, minWidth: 140 }}
-            />
-            {provinciaSearch && (
-              <button
-                onClick={() => { setProvinciaSearch(""); setProvinciaFilter(""); setShowProvDropdown(false); }}
-                style={{ position: "absolute", right: 7, background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 13, padding: 0, lineHeight: 1 }}
-              >✕</button>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <FilterLabel>Data fine</FilterLabel>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={fieldStyle} />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <FilterLabel>Sorgente</FilterLabel>
+            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} style={fieldStyle}>
+              <option value="">Tutte</option>
+              {allSources.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Provincia combobox */}
+          <div ref={provRef} style={{ display: "flex", flexDirection: "column", position: "relative" }}>
+            <FilterLabel>Provincia</FilterLabel>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder="Cerca…"
+                value={provinciaSearch}
+                onChange={(e) => { setProvinciaSearch(e.target.value); setProvinciaFilter(""); setShowProvDropdown(true); }}
+                onFocus={() => setShowProvDropdown(true)}
+                style={{ ...fieldStyle, paddingRight: provinciaSearch ? 26 : 10, minWidth: 140 }}
+              />
+              {provinciaSearch && (
+                <button
+                  onClick={() => { setProvinciaSearch(""); setProvinciaFilter(""); setShowProvDropdown(false); }}
+                  style={{ position: "absolute", right: 7, background: "none", border: "none", cursor: "pointer", color: "#9CA3AF", fontSize: 13, padding: 0, lineHeight: 1 }}
+                >✕</button>
+              )}
+            </div>
+            {showProvDropdown && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, right: 0, marginTop: 2,
+                backgroundColor: "#fff", border: "1px solid #E8EAF0", borderRadius: 6,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.08)", zIndex: 100, maxHeight: 200, overflowY: "auto",
+              }}>
+                {allProvinces
+                  .filter((p) => provinciaSearch === "" || p.toLowerCase().includes(provinciaSearch.toLowerCase()))
+                  .map((p) => (
+                    <div
+                      key={p}
+                      onMouseDown={() => { setProvinciaFilter(p); setProvinciaSearch(p); setShowProvDropdown(false); }}
+                      style={{
+                        padding: "7px 10px", fontSize: 13, cursor: "pointer",
+                        backgroundColor: p === provinciaFilter ? "#EEF3FD" : "transparent",
+                        color: p === provinciaFilter ? "#3B6FE8" : "#1A1A2E",
+                        fontWeight: p === provinciaFilter ? 600 : 400,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = p === provinciaFilter ? "#EEF3FD" : "#F8F9FB")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = p === provinciaFilter ? "#EEF3FD" : "transparent")}
+                    >{p}</div>
+                  ))}
+                {allProvinces.filter((p) => provinciaSearch === "" || p.toLowerCase().includes(provinciaSearch.toLowerCase())).length === 0 && (
+                  <div style={{ padding: "7px 10px", fontSize: 13, color: "#6B7280" }}>Nessuna trovata</div>
+                )}
+              </div>
             )}
           </div>
-          {showProvDropdown && (
-            <div style={{
-              position: "absolute", top: "100%", left: 0, right: 0, marginTop: 2,
-              backgroundColor: "#fff", border: "1px solid #E8EAF0", borderRadius: 6,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.08)", zIndex: 100, maxHeight: 200, overflowY: "auto",
-            }}>
-              {allProvinces
-                .filter((p) => provinciaSearch === "" || p.toLowerCase().includes(provinciaSearch.toLowerCase()))
-                .map((p) => (
-                  <div
-                    key={p}
-                    onMouseDown={() => { setProvinciaFilter(p); setProvinciaSearch(p); setShowProvDropdown(false); }}
-                    style={{
-                      padding: "7px 10px", fontSize: 13, cursor: "pointer",
-                      backgroundColor: p === provinciaFilter ? "#EEF3FD" : "transparent",
-                      color: p === provinciaFilter ? "#3B6FE8" : "#1A1A2E",
-                      fontWeight: p === provinciaFilter ? 600 : 400,
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = p === provinciaFilter ? "#EEF3FD" : "#F8F9FB")}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = p === provinciaFilter ? "#EEF3FD" : "transparent")}
-                  >{p}</div>
-                ))}
-              {allProvinces.filter((p) => provinciaSearch === "" || p.toLowerCase().includes(provinciaSearch.toLowerCase())).length === 0 && (
-                <div style={{ padding: "7px 10px", fontSize: 13, color: "#6B7280" }}>Nessuna trovata</div>
-              )}
-            </div>
-          )}
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <FilterLabel>Stage</FilterLabel>
+            <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={fieldStyle}>
+              <option value="">Tutti</option>
+              {allStages.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+            </select>
+          </div>
+
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            style={{
+              backgroundColor: "#3B6FE8", color: "#fff", border: "none",
+              borderRadius: 6, padding: "0 16px", fontWeight: 500,
+              fontSize: 13, cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1, height: 36, marginTop: "auto",
+            }}
+          >
+            {loading ? "Caricamento…" : "Aggiorna"}
+          </button>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <FilterLabel>Stage</FilterLabel>
-          <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={fieldStyle}>
-            <option value="">Tutti</option>
-            {allStages.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
-          </select>
-        </div>
+        {/* ── Content ── */}
+        <div style={{ padding: "0 32px 48px" }}>
 
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          style={{
-            backgroundColor: "#3B6FE8", color: "#fff", border: "none",
-            borderRadius: 6, padding: "0 16px", fontWeight: 500,
-            fontSize: 13, cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.7 : 1, height: 36, marginTop: "auto",
-          }}
-        >
-          {loading ? "Caricamento…" : "Aggiorna"}
-        </button>
-      </div>
+          {/* Section: Riepilogo */}
+          <h2 style={sectionTitle}>Riepilogo</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: 12 }}>
+            <KpiCard
+              label="Totale Lead"
+              value={totalLeads}
+              Icon={Users}
+              onClick={() => openDrawer(`Totale Lead — ${totalLeads} lead`, filtered)}
+            />
+            <KpiCard
+              label="Video Call"
+              value={videoCallCount}
+              Icon={Video}
+              accent="#9C6FE8"
+              onClick={() => openDrawer(`Video Call — ${videoCallCount} lead`, videoCallLeads)}
+            />
+            <KpiCard
+              label="Test Drive"
+              value={testDriveCount}
+              Icon={Car}
+              accent="#4CAF7D"
+              onClick={() => openDrawer(`Test Drive — ${testDriveCount} lead`, testDriveLeads)}
+            />
+            <KpiCard label="Call"             value={callCount}               Icon={PhoneCall}  accent="#F59E0B" />
+            <KpiCard label="Tasso Video Call" value={pct(videoCallCount)}     Icon={TrendingUp} accent="#9C6FE8" />
+            <KpiCard label="Tasso Test Drive" value={pct(testDriveCount)}     Icon={TrendingUp} accent="#4CAF7D" />
+            <KpiCard label="Tasso Totale"     value={pct(videoCallCount + testDriveCount)} Icon={BarChart2} accent="#3B6FE8" />
+          </div>
 
-      {/* ── Content ── */}
-      <div style={{ padding: "0 32px 48px" }}>
-
-        {/* Section: Riepilogo */}
-        <h2 style={sectionTitle}>Riepilogo</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: 12 }}>
-          <KpiCard label="Totale Lead"         value={totalLeads}              Icon={Users}      />
-          <KpiCard label="Video Call"           value={videoCallCount}          Icon={Video}      accent="#9C6FE8" />
-          <KpiCard label="Test Drive"           value={testDriveCount}          Icon={Car}        accent="#4CAF7D" />
-          <KpiCard label="Call"                 value={callCount}               Icon={PhoneCall}  accent="#F59E0B" />
-          <KpiCard label="Tasso Video Call"     value={pct(videoCallCount)}     Icon={TrendingUp} accent="#9C6FE8" />
-          <KpiCard label="Tasso Test Drive"     value={pct(testDriveCount)}     Icon={TrendingUp} accent="#4CAF7D" />
-          <KpiCard label="Tasso Totale"         value={pct(videoCallCount + testDriveCount)} Icon={BarChart2} accent="#3B6FE8" />
-        </div>
-
-        {/* Section: Pipeline */}
-        <h2 style={sectionTitle}>
-          Distribuzione Pipeline Swapa
-          <span style={{ fontSize: 11, color: "#9CA3AF", fontStyle: "italic", fontWeight: 400, marginLeft: 8 }}>
-            — dati totali, indipendenti dal filtro date
-          </span>
-        </h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {pipelineBreakdown.map(({ name, color, count }) => (
-            <div key={name} style={{
-              backgroundColor: "#fff", border: "1px solid #E8EAF0",
-              borderRadius: 8, padding: 16, minWidth: 110, flex: "1 1 110px",
-            }}>
-              <div style={{ fontSize: 22, fontWeight: 600, color, lineHeight: 1.1 }}>{count}</div>
-              <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{name}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Section: Breakdown Sorgente */}
-        <h2 style={sectionTitle}>Breakdown Sorgente × Tipo Appuntamento</h2>
-        <div style={cardStyle}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#F8F9FB" }}>
-                {["Sorgente", "Video Call", "% VC", "Test Drive", "% TD", "Call", "% Call", "Nessuno", "Totale", "% Totale"].map((h) => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sourceBreakdown.map((row, i) => (
-                <tr
-                  key={row.src}
-                  style={{ borderBottom: i === sourceBreakdown.length - 1 ? "none" : "1px solid #F0F2F5" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8F9FB")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                >
-                  <td style={tdStyle}>{row.src}</td>
-                  <td style={tdStyle}>
-                    <span style={vcBadge}>{row.vc}</span>
-                  </td>
-                  <td style={{ ...tdStyle, color: "#6B7280" }}>
-                    {row.total > 0 ? ((row.vc / row.total) * 100).toFixed(1) : "0.0"}%
-                  </td>
-                  <td style={tdStyle}>
-                    <span style={tdBadge}>{row.td}</span>
-                  </td>
-                  <td style={{ ...tdStyle, color: "#6B7280" }}>
-                    {row.total > 0 ? ((row.td / row.total) * 100).toFixed(1) : "0.0"}%
-                  </td>
-                  <td style={tdStyle}>
-                    <span style={callBadge}>{row.call}</span>
-                  </td>
-                  <td style={{ ...tdStyle, color: "#6B7280" }}>
-                    {row.total > 0 ? ((row.call / row.total) * 100).toFixed(1) : "0.0"}%
-                  </td>
-                  <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
-                  <td style={{ ...tdStyle, color: "#6B7280" }}>
-                    {totalLeads > 0 ? ((row.total / totalLeads) * 100).toFixed(1) : "0.0"}%
-                  </td>
-                </tr>
-              ))}
-              {sourceBreakdown.length === 0 && (
-                <tr><td colSpan={10} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Section: Breakdown Provincia */}
-        <h2 style={sectionTitle}>Breakdown Provincia × Tipo Appuntamento (top 20)</h2>
-        <div style={cardStyle}>
-          <div style={{ padding: "10px 12px", borderBottom: "1px solid #F0F2F5", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>Ordina per</span>
-            {[
-              { key: "total" as ProvinciaSortKey, label: "Totale" },
-              { key: "td" as ProvinciaSortKey, label: "Test Drive" },
-              { key: "vc" as ProvinciaSortKey, label: "Video Call" },
-            ].map((opt) => (
-              <button
-                key={opt.key}
-                onClick={() => handleProvinciaSort(opt.key)}
-                style={{
-                  border: "1px solid",
-                  borderColor: provinciaSort.by === opt.key ? "#3B6FE8" : "#E8EAF0",
-                  backgroundColor: provinciaSort.by === opt.key ? "#EEF3FD" : "#fff",
-                  color: provinciaSort.by === opt.key ? "#3B6FE8" : "#6B7280",
-                  borderRadius: 999,
-                  padding: "4px 10px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {opt.label} {provinciaSort.by === opt.key ? provinciaSortIndicator : ""}
-              </button>
+          {/* Section: Pipeline */}
+          <h2 style={sectionTitle}>
+            Distribuzione Pipeline Swapa
+            <span style={{ fontSize: 11, color: "#9CA3AF", fontStyle: "italic", fontWeight: 400, marginLeft: 8 }}>
+              — dati totali, indipendenti dal filtro date
+            </span>
+          </h2>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {pipelineBreakdown.map(({ name, color, count }) => (
+              <div key={name} style={{
+                backgroundColor: "#fff", border: "1px solid #E8EAF0",
+                borderRadius: 8, padding: 16, minWidth: 110, flex: "1 1 110px",
+              }}>
+                <div style={{ fontSize: 22, fontWeight: 600, color, lineHeight: 1.1 }}>{count}</div>
+                <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{name}</div>
+              </div>
             ))}
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#F8F9FB" }}>
-                <th style={thStyle}>Provincia</th>
-                <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "vc" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "vc" ? "#3B6FE8" : thStyle.color }}>Video Call</th>
-                <th style={thStyle}>% VC</th>
-                <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "td" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "td" ? "#3B6FE8" : thStyle.color }}>Test Drive</th>
-                <th style={thStyle}>% TD</th>
-                <th style={thStyle}>Call</th>
-                <th style={thStyle}>% Call</th>
-                <th style={thStyle}>Nessuno</th>
-                <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "total" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "total" ? "#3B6FE8" : thStyle.color }}>Totale</th>
-              </tr>
-            </thead>
-            <tbody>
-              {provinciaBreakdown.map((row, i) => {
-                const isHighlighted = provinciaFilter !== "" && row.prov === provinciaFilter;
-                return (
-                  <tr
-                    key={row.prov}
-                    style={{
-                      borderBottom: i === provinciaBreakdown.length - 1 ? "none" : "1px solid #F0F2F5",
-                      backgroundColor: isHighlighted ? "#EEF3FD" : "transparent",
-                      outline: isHighlighted ? "2px solid #3B6FE8" : undefined,
-                      outlineOffset: isHighlighted ? "-1px" : undefined,
-                    }}
-                    onMouseEnter={(e) => { if (!isHighlighted) e.currentTarget.style.backgroundColor = "#F8F9FB"; }}
-                    onMouseLeave={(e) => { if (!isHighlighted) e.currentTarget.style.backgroundColor = "transparent"; }}
-                  >
-                    <td style={{ ...tdStyle, fontWeight: isHighlighted ? 600 : undefined, color: isHighlighted ? "#3B6FE8" : undefined }}>{row.prov}</td>
-                    <td style={tdStyle}><span style={vcBadge}>{row.vc}</span></td>
-                    <td style={{ ...tdStyle, color: "#6B7280" }}>
-                      {row.total > 0 ? ((row.vc / row.total) * 100).toFixed(1) + "%" : "—"}
-                    </td>
-                    <td style={tdStyle}><span style={tdBadge}>{row.td}</span></td>
-                    <td style={{ ...tdStyle, color: "#6B7280" }}>
-                      {row.total > 0 ? ((row.td / row.total) * 100).toFixed(1) + "%" : "—"}
-                    </td>
-                    <td style={tdStyle}><span style={callBadge}>{row.call}</span></td>
-                    <td style={{ ...tdStyle, color: "#6B7280" }}>
-                      {row.total > 0 ? ((row.call / row.total) * 100).toFixed(1) + "%" : "—"}
-                    </td>
-                    <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
-                  </tr>
-                );
-              })}
-              {provinciaBreakdown.length === 0 && (
-                <tr><td colSpan={9} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
 
-        {/* Section: Andamento */}
-        <h2 style={sectionTitle}>Andamento Lead nel Tempo</h2>
-        <div style={{ ...cardStyle, padding: 20 }}>
-          {timeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={timeData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F0F2F5" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "#fff", border: "1px solid #E8EAF0", borderRadius: 6, fontSize: 12, boxShadow: "none" }}
-                  labelStyle={{ color: "#6B7280", marginBottom: 4 }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12, color: "#6B7280", paddingTop: 8 }} />
-                <Line type="monotone" dataKey="Totale"     stroke="#3B6FE8" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Video Call" stroke="#9C6FE8" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Test Drive" stroke="#4CAF7D" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Call"       stroke="#F59E0B" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ textAlign: "center", color: "#9CA3AF", padding: 48, fontSize: 13 }}>
-              Nessun dato da visualizzare
+          {/* Section: Breakdown Sorgente */}
+          <h2 style={sectionTitle}>Breakdown Sorgente × Tipo Appuntamento</h2>
+          <div style={cardStyle}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ backgroundColor: "#F8F9FB" }}>
+                  {["Sorgente", "Video Call", "% VC", "Test Drive", "% TD", "% conv.", "Call", "% Call", "Nessuno", "Totale", "% Totale"].map((h) => (
+                    <th key={h} style={thStyle}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sourceBreakdown.map((row, i) => {
+                  const vcLeads = filtered.filter(
+                    (c) => getSourceName(c, sourceMap) === row.src && appointmentTypeForContact(c.id, appointmentTypeByContact) === "Video Call"
+                  );
+                  const tdLeads = filtered.filter(
+                    (c) => getSourceName(c, sourceMap) === row.src && appointmentTypeForContact(c.id, appointmentTypeByContact) === "Test Drive"
+                  );
+                  return (
+                    <tr
+                      key={row.src}
+                      style={{ borderBottom: i === sourceBreakdown.length - 1 ? "none" : "1px solid #F0F2F5" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8F9FB")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    >
+                      <td style={tdStyle}>{row.src}</td>
+                      <td style={tdStyle}>
+                        <ClickableBadge
+                          value={row.vc}
+                          badgeStyle={vcBadge}
+                          onClick={() => openDrawer(`Video Call da ${row.src} — ${row.vc} lead`, vcLeads)}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.vc, row.total)}
+                      </td>
+                      <td style={tdStyle}>
+                        <ClickableBadge
+                          value={row.td}
+                          badgeStyle={tdBadge}
+                          onClick={() => openDrawer(`Test Drive da ${row.src} — ${row.td} lead`, tdLeads)}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.td, row.total)}
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.vc + row.td, row.total)}
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={callBadge}>{row.call}</span>
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.call, row.total)}
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {totalLeads > 0 ? ((row.total / totalLeads) * 100).toFixed(1) + "%" : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {sourceBreakdown.length === 0 && (
+                  <tr><td colSpan={11} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Section: Breakdown Provincia */}
+          <h2 style={sectionTitle}>Breakdown Provincia × Tipo Appuntamento (top 20)</h2>
+          <div style={cardStyle}>
+            <div style={{ padding: "10px 12px", borderBottom: "1px solid #F0F2F5", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>Ordina per</span>
+              {[
+                { key: "total" as ProvinciaSortKey, label: "Totale" },
+                { key: "td" as ProvinciaSortKey, label: "Test Drive" },
+                { key: "vc" as ProvinciaSortKey, label: "Video Call" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => handleProvinciaSort(opt.key)}
+                  style={{
+                    border: "1px solid",
+                    borderColor: provinciaSort.by === opt.key ? "#3B6FE8" : "#E8EAF0",
+                    backgroundColor: provinciaSort.by === opt.key ? "#EEF3FD" : "#fff",
+                    color: provinciaSort.by === opt.key ? "#3B6FE8" : "#6B7280",
+                    borderRadius: 999,
+                    padding: "4px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt.label} {provinciaSort.by === opt.key ? provinciaSortIndicator : ""}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ backgroundColor: "#F8F9FB" }}>
+                  <th style={thStyle}>Provincia</th>
+                  <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "vc" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "vc" ? "#3B6FE8" : thStyle.color }}>Video Call</th>
+                  <th style={thStyle}>% VC</th>
+                  <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "td" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "td" ? "#3B6FE8" : thStyle.color }}>Test Drive</th>
+                  <th style={thStyle}>% TD</th>
+                  <th style={thStyle}>Call</th>
+                  <th style={thStyle}>% Call</th>
+                  <th style={thStyle}>Nessuno</th>
+                  <th style={{ ...thStyle, backgroundColor: provinciaSort.by === "total" ? "#EEF3FD" : "#F8F9FB", color: provinciaSort.by === "total" ? "#3B6FE8" : thStyle.color }}>Totale</th>
+                  <th style={thStyle}>% conv.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {provinciaBreakdown.map((row, i) => {
+                  const isHighlighted = provinciaFilter !== "" && row.prov === provinciaFilter;
+                  const vcLeads = filtered.filter(
+                    (c) => getProvinciaNome(c) === row.prov && appointmentTypeForContact(c.id, appointmentTypeByContact) === "Video Call"
+                  );
+                  const tdLeads = filtered.filter(
+                    (c) => getProvinciaNome(c) === row.prov && appointmentTypeForContact(c.id, appointmentTypeByContact) === "Test Drive"
+                  );
+                  return (
+                    <tr
+                      key={row.prov}
+                      style={{
+                        borderBottom: i === provinciaBreakdown.length - 1 ? "none" : "1px solid #F0F2F5",
+                        backgroundColor: isHighlighted ? "#EEF3FD" : "transparent",
+                        outline: isHighlighted ? "2px solid #3B6FE8" : undefined,
+                        outlineOffset: isHighlighted ? "-1px" : undefined,
+                      }}
+                      onMouseEnter={(e) => { if (!isHighlighted) e.currentTarget.style.backgroundColor = "#F8F9FB"; }}
+                      onMouseLeave={(e) => { if (!isHighlighted) e.currentTarget.style.backgroundColor = "transparent"; }}
+                    >
+                      <td style={{ ...tdStyle, fontWeight: isHighlighted ? 600 : undefined, color: isHighlighted ? "#3B6FE8" : undefined }}>{row.prov}</td>
+                      <td style={tdStyle}>
+                        <ClickableBadge
+                          value={row.vc}
+                          badgeStyle={vcBadge}
+                          onClick={() => openDrawer(`Video Call da ${row.prov} — ${row.vc} lead`, vcLeads)}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.vc, row.total)}
+                      </td>
+                      <td style={tdStyle}>
+                        <ClickableBadge
+                          value={row.td}
+                          badgeStyle={tdBadge}
+                          onClick={() => openDrawer(`Test Drive da ${row.prov} — ${row.td} lead`, tdLeads)}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.td, row.total)}
+                      </td>
+                      <td style={tdStyle}><span style={callBadge}>{row.call}</span></td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.call, row.total)}
+                      </td>
+                      <td style={{ ...tdStyle, color: "#6B7280" }}>{row.no}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{row.total}</td>
+                      <td style={{ ...tdStyle, color: "#6B7280", fontSize: 12 }}>
+                        {fmtPct(row.vc + row.td, row.total)}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {provinciaBreakdown.length === 0 && (
+                  <tr><td colSpan={10} style={{ ...tdStyle, textAlign: "center", color: "#9CA3AF", padding: 32 }}>Nessun dato</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
+          {/* Section: Andamento */}
+          <h2 style={sectionTitle}>Andamento Lead nel Tempo</h2>
+          <div style={{ ...cardStyle, padding: 20 }}>
+            {timeData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={timeData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F0F2F5" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#fff", border: "1px solid #E8EAF0", borderRadius: 6, fontSize: 12, boxShadow: "none" }}
+                    labelStyle={{ color: "#6B7280", marginBottom: 4 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, color: "#6B7280", paddingTop: 8 }} />
+                  <Line type="monotone" dataKey="Totale"     stroke="#3B6FE8" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Video Call" stroke="#9C6FE8" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Test Drive" stroke="#4CAF7D" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Call"       stroke="#F59E0B" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ textAlign: "center", color: "#9CA3AF", padding: 48, fontSize: 13 }}>
+                Nessun dato da visualizzare
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
