@@ -12,6 +12,9 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Users, Video, Car, PhoneCall, TrendingUp, BarChart2, type LucideIcon } from "lucide-react";
+import { normalizzaProvincia, siglaToNomeProvincia, logStratiOnce } from "@/app/lib/normalizzaProvincia";
+
+const PROVINCIA_NON_SPECIFICATA = "Non specificata";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,10 +85,6 @@ function getCustomValue(custom_values: CustomValue[] | undefined, key: string): 
   return found?.value_text ?? null;
 }
 
-function toTitleCase(s: string): string {
-  return s.trim().toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
-}
-
 function defaultDateRange() {
   const end = new Date();
   return {
@@ -124,7 +123,8 @@ function getSourceName(c: Contact, sourceMap: Map<number, string>): string {
 
 function getProvinciaNome(c: Contact): string {
   const raw = getCustomValue(c.custom_values, "in_che_provincia_risiedi_") || c.city || "";
-  return raw ? toTitleCase(raw) : "—";
+  const sigla = normalizzaProvincia(raw).sigla;
+  return siglaToNomeProvincia(sigla) ?? PROVINCIA_NON_SPECIFICATA;
 }
 
 function fmtPct(n: number, total: number): string {
@@ -402,6 +402,14 @@ export default function DashboardPage() {
   }, [fetchData]);
 
   useEffect(() => {
+    if (contacts.length === 0) return;
+    const valori = contacts.map(
+      (c) => getCustomValue(c.custom_values, "in_che_provincia_risiedi_") || c.city || ""
+    );
+    logStratiOnce(valori);
+  }, [contacts]);
+
+  useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (provRef.current && !provRef.current.contains(e.target as Node)) {
         setShowProvDropdown(false);
@@ -504,11 +512,11 @@ export default function DashboardPage() {
 
   const allProvinces = useMemo(() => {
     const s = new Set<string>();
-    contacts.forEach((c) => {
-      const p = getProvinciaNome(c);
-      if (p !== "—") s.add(p);
-    });
-    return Array.from(s).sort();
+    contacts.forEach((c) => s.add(getProvinciaNome(c)));
+    // Sigle in ordine alfabetico, "Non specificata" sempre in fondo.
+    const list = Array.from(s).filter((v) => v !== PROVINCIA_NON_SPECIFICATA).sort();
+    if (s.has(PROVINCIA_NON_SPECIFICATA)) list.push(PROVINCIA_NON_SPECIFICATA);
+    return list;
   }, [contacts]);
 
   const allStages = useMemo(() => {
