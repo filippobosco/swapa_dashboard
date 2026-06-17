@@ -117,8 +117,24 @@ function appointmentTypeForContact(
 }
 
 function getSourceName(c: Contact, sourceMap: Map<number, string>): string {
-  if (c.source != null) return sourceMap.get(c.source) ?? `Fonte ${c.source}`;
-  return "Sconosciuta";
+  const base = c.source != null ? (sourceMap.get(c.source) ?? `Fonte ${c.source}`) : "Sconosciuta";
+
+  // "Paid Google" è una sorgente CRM quasi inutilizzata e non tracciata: i suoi lead
+  // confluiscono nel traffico paid del form → "Website Form (Paid)".
+  if (base.toLowerCase() === "paid google") return "Website Form (Paid)";
+
+  // Lo split per canale si applica SOLO a "Website Form" (sorgente generica del form sito).
+  if (base.toLowerCase() !== "website form") return base;
+
+  // website_fbclid (Facebook Click ID) è valorizzato solo per i lead da inserzione Meta.
+  const fbclid = getCustomValue(c.custom_values, "website_fbclid");
+  if (fbclid && fbclid.trim()) return `${base} (Meta)`;
+
+  // Per gli altri Website Form usa il canale reale da website_medium.
+  const medium = (getCustomValue(c.custom_values, "website_medium") || "").trim().toLowerCase();
+  if (medium === "cpc" || medium === "paid" || medium === "paid_social") return `${base} (Paid)`;
+  if (medium === "referral") return `${base} (Referral)`;
+  return `${base} (Diretto)`;
 }
 
 function getProvinciaNome(c: Contact): string {
